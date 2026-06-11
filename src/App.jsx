@@ -97,6 +97,7 @@ const SHOP_CATS = ["지형", "자재", "지붕·창", "길·조명", "자연", "
 const ri = (a, b) => a + Math.floor(Math.random() * (b - a + 1)); // [a,b]
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+const lcm = (a, b) => (a / gcd(a, b)) * b;
 
 // 분수는 {w(자연수부), n(분자), d(분모)} 로 표현. 값 = w + n/d
 const frVal = (f) => f.w + f.n / f.d;
@@ -134,40 +135,38 @@ function shuffleWithAnswer(correct, distractors) {
   return { choices: set, answer: set.indexOf(correct) };
 }
 
-// 덧셈/뺄셈 답 보기 만들기 (같은 분모 기준 오답 생성)
-function arithDistractors(ans, d) {
+// 덧셈/뺄셈 오답 생성기 (정답의 기약분수/공통분모를 사용)
+function arithDistractors(ans, D) {
   const t = frToImproper(ans).n;
   const cands = [];
   const push = (nT, dd) => { if (nT >= 0) cands.push(frStr(normalize(nT, dd))); };
-  push(t + 1, d); push(t - 1, d); push(t + d, d); push(Math.max(0, t - d), d);
-  if (d > 2) push(t, d - 1);
-  push(t, d + 1);
+  push(t + 1, D); push(t - 1, D); push(t + D, D); push(Math.max(0, t - D), D);
+  if (D > 2) push(t, D - 1);
+  push(t, D + 1);
   return cands.filter((c) => c !== frStr(ans));
 }
 
 function makeArith(diff, opts = {}) {
-  const d = opts.d || ri(2, diff === 1 ? 6 : diff >= 4 ? 12 : 10);
+  const d1 = opts.d1 || ri(2, diff === 1 ? 6 : diff >= 4 ? 12 : 10);
+  let d2 = opts.d2 || ri(2, diff === 1 ? 6 : diff >= 4 ? 12 : 10);
+  while (d2 === d1) d2 = ri(2, diff === 1 ? 6 : diff >= 4 ? 12 : 10);
   const op = opts.op || pick(["+", "-"]);
   let A, B;
   if (diff <= 2) { // 진분수끼리
-    let n1 = ri(1, d - 1), n2 = ri(1, d - 1);
-    if (op === "-" && n1 < n2) [n1, n2] = [n2, n1];
-    if (op === "-" && n1 === n2) n1 = Math.min(d - 1, n1 + 1);
-    if (diff === 1 && op === "+" && n1 + n2 >= d) { n1 = ri(1, Math.max(1, d - 2)); n2 = ri(1, d - 1 - n1); }
-    A = { w: 0, n: n1, d }; B = { w: 0, n: n2, d };
+    let n1 = ri(1, d1 - 1), n2 = ri(1, d2 - 1);
+    A = { w: 0, n: n1, d: d1 }; B = { w: 0, n: n2, d: d2 };
   } else { // 대분수 포함
-    A = { w: ri(diff >= 4 ? 1 : 0, 3), n: ri(1, d - 1), d };
-    B = { w: ri(0, diff >= 4 ? 2 : 1), n: ri(1, d - 1), d };
+    A = { w: ri(diff >= 4 ? 1 : 0, 3), n: ri(1, d1 - 1), d: d1 };
+    B = { w: ri(0, diff >= 4 ? 2 : 1), n: ri(1, d2 - 1), d: d2 };
     if (op === "-" && frVal(A) < frVal(B)) [A, B] = [B, A];
     if (op === "-" && frVal(A) === frVal(B)) A = { ...A, w: A.w + 1 };
-    if (diff >= 4 && op === "-" && A.n >= B.n) B = { ...B, n: Math.min(d - 1, A.n + ri(1, 2)) % d || d - 1 }; // 받아내림 유도
-    if (op === "-" && frVal(A) < frVal(B)) [A, B] = [B, A];
   }
-  const tA = frToImproper(A).n, tB = frToImproper(B).n;
+  const D = lcm(A.d, B.d);
+  const tA = frToImproper(A).n * (D / A.d), tB = frToImproper(B).n * (D / B.d);
   const ansT = op === "+" ? tA + tB : tA - tB;
-  const ans = normalize(ansT, d);
+  const ans = normalize(ansT, D);
   const correct = frStr(ans);
-  const { choices, answer } = shuffleWithAnswer(correct, arithDistractors(ans, d));
+  const { choices, answer } = shuffleWithAnswer(correct, arithDistractors(ans, D));
   return {
     kind: "arith", diff, op,
     promptParts: [{ fr: frStr(A) }, ` ${op} `, { fr: frStr(B) }, " = ?"],
@@ -199,10 +198,12 @@ function makeWhole(diff) { // 분수 ± 자연수
 }
 
 function makeCompare(diff) {
-  const d = ri(2, diff >= 4 ? 12 : 10);
+  let d1 = ri(2, diff >= 4 ? 12 : 10);
+  let d2 = ri(2, diff >= 4 ? 12 : 10);
+  while (d2 === d1) d2 = ri(2, diff >= 4 ? 12 : 10);
   let A, B;
-  if (diff <= 2) { A = { w: 0, n: ri(1, d - 1), d }; B = { w: 0, n: ri(1, d - 1), d }; }
-  else { A = { w: ri(0, 2), n: ri(1, d - 1), d }; B = { w: ri(0, 2), n: ri(1, d - 1), d }; }
+  if (diff <= 2) { A = { w: 0, n: ri(1, d1 - 1), d: d1 }; B = { w: 0, n: ri(1, d2 - 1), d: d2 }; }
+  else { A = { w: ri(0, 2), n: ri(1, d1 - 1), d: d1 }; B = { w: ri(0, 2), n: ri(1, d2 - 1), d: d2 }; }
   const va = frVal(A), vb = frVal(B);
   const correct = va > vb ? ">" : va < vb ? "<" : "=";
   const choices = ["<", "=", ">"];
@@ -215,17 +216,20 @@ function makeCompare(diff) {
   };
 }
 
-function makeBlank(diff) { // A + □ = C  (같은 분모)
-  const d = ri(3, diff >= 4 ? 12 : 9);
+function makeBlank(diff) { // A + □ = C  (분모가 다른 항들)
+  const d1 = ri(3, diff >= 4 ? 12 : 9);
+  let d2 = ri(3, diff >= 4 ? 12 : 9);
+  while (d2 === d1) d2 = ri(3, diff >= 4 ? 12 : 9);
   const op = pick(["+", "-"]);
-  const A = { w: diff >= 4 ? ri(0, 2) : 0, n: ri(1, d - 1), d };
-  const X = { w: diff >= 4 ? ri(0, 1) : 0, n: ri(1, d - 1), d };
-  const tA = frToImproper(A).n, tX = frToImproper(X).n;
-  const C = normalize(op === "+" ? tA + tX : Math.abs(tA - tX), d);
+  const A = { w: diff >= 4 ? ri(0, 2) : 0, n: ri(1, d1 - 1), d: d1 };
+  const X = { w: diff >= 4 ? ri(0, 1) : 0, n: ri(1, d2 - 1), d: d2 };
+  const D = lcm(A.d, X.d);
+  const tA = frToImproper(A).n * (D / A.d), tX = frToImproper(X).n * (D / X.d);
+  const C = normalize(op === "+" ? tA + tX : Math.abs(tA - tX), D);
   const realA = op === "-" && tA < tX ? X : A; // 음수 방지
   const realX = realA === A ? X : A;
   const correct = frStr(realX);
-  const { choices, answer } = shuffleWithAnswer(correct, arithDistractors(realX, d));
+  const { choices, answer } = shuffleWithAnswer(correct, arithDistractors(realX, D));
   return {
     kind: "blank", diff,
     promptParts: [{ fr: frStr(realA) }, ` ${op} `, "□", " = ", { fr: frStr(C) }],
@@ -252,22 +256,25 @@ function makeConvert(diff) { // 가분수 <-> 대분수
   };
 }
 
-function makeTriple(diff) { // 세 분수 연산 (같은 분모)
-  const d = ri(3, 12);
-  const a = ri(2, d - 1), b = ri(1, d - 1), c = ri(1, d - 1);
+function makeTriple(diff) { // 세 분수 연산 (분모가 서로 다름)
+  const d1 = ri(3, 12); let d2 = ri(3, 12); let d3 = ri(3, 12);
+  while (d2 === d1) d2 = ri(3, 12);
+  while (d3 === d1 || d3 === d2) d3 = ri(3, 12);
+  const a = ri(2, d1 - 1), b = ri(1, d2 - 1), c = ri(1, d3 - 1);
   const ops = pick([["+", "+"], ["+", "-"], ["-", "+"]]);
-  let t = a;
-  t = ops[0] === "+" ? t + b : t - b;
-  t = ops[1] === "+" ? t + c : t - c;
+  const D = lcm(lcm(d1, d2), d3);
+  let t = a * (D / d1);
+  t = ops[0] === "+" ? t + b * (D / d2) : t - b * (D / d2);
+  t = ops[1] === "+" ? t + c * (D / d3) : t - c * (D / d3);
   if (t < 0) return makeTriple(diff);
-  const ans = normalize(t, d);
+  const ans = normalize(t, D);
   const correct = frStr(ans);
-  const { choices, answer } = shuffleWithAnswer(correct, arithDistractors(ans, d));
+  const { choices, answer } = shuffleWithAnswer(correct, arithDistractors(ans, D));
   return {
     kind: "triple", diff,
-    promptParts: [{ fr: `${a}/${d}` }, ` ${ops[0]} `, { fr: `${b}/${d}` }, ` ${ops[1]} `, { fr: `${c}/${d}` }, " = ?"],
+    promptParts: [{ fr: `${a}/${d1}` }, ` ${ops[0]} `, { fr: `${b}/${d2}` }, ` ${ops[1]} `, { fr: `${c}/${d3}` }, " = ?"],
     visA: null, visB: null, choices, answer,
-    sig: `t|${a}|${b}|${c}|${d}|${ops.join("")}`,
+    sig: `t|${a}|${b}|${c}|${d1}|${d2}|${d3}|${ops.join("")}`,
   };
 }
 
@@ -281,14 +288,16 @@ const WORD_TPL = [
 
 function makeWord(diff) {
   const tpl = pick(WORD_TPL);
-  const d = ri(3, 10);
-  let A = { w: ri(0, 2), n: ri(1, d - 1), d };
-  let B = { w: ri(0, 1), n: ri(1, d - 1), d };
+  let d1 = ri(3, 10); let d2 = ri(3, 10);
+  while (d2 === d1) d2 = ri(3, 10);
+  let A = { w: ri(0, 2), n: ri(1, d1 - 1), d: d1 };
+  let B = { w: ri(0, 1), n: ri(1, d2 - 1), d: d2 };
   if (tpl.op === "-" && frVal(A) <= frVal(B)) A = { ...A, w: B.w + 1 };
-  const tA = frToImproper(A).n, tB = frToImproper(B).n;
-  const ans = normalize(tpl.op === "+" ? tA + tB : tA - tB, d);
+  const D = lcm(A.d, B.d);
+  const tA = frToImproper(A).n * (D / A.d), tB = frToImproper(B).n * (D / B.d);
+  const ans = normalize(tpl.op === "+" ? tA + tB : tA - tB, D);
   const correct = frStr(ans);
-  const { choices, answer } = shuffleWithAnswer(correct, arithDistractors(ans, d));
+  const { choices, answer } = shuffleWithAnswer(correct, arithDistractors(ans, D));
   return {
     kind: "word", diff, op: tpl.op,
     promptParts: tpl.t(frStr(A), frStr(B)),
