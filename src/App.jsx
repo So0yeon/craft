@@ -155,6 +155,8 @@ function makeArith(diff, opts = {}) {
   if (diff <= 2) { // 진분수끼리
     let n1 = ri(1, d1 - 1), n2 = ri(1, d2 - 1);
     A = { w: 0, n: n1, d: d1 }; B = { w: 0, n: n2, d: d2 };
+    // 초등용: 뺄셈일 때 작은 수에서 큰 수를 빼지 않도록 보장
+    if (op === "-" && frVal(A) < frVal(B)) [A, B] = [B, A];
   } else { // 대분수 포함
     A = { w: ri(diff >= 4 ? 1 : 0, 3), n: ri(1, d1 - 1), d: d1 };
     B = { w: ri(0, diff >= 4 ? 2 : 1), n: ri(1, d2 - 1), d: d2 };
