@@ -1887,6 +1887,8 @@ function QuizModal({ onClose, notifyAch }) {
   const [offerUp, setOfferUp] = useState(false);
   const [downMsg, setDownMsg] = useState(false);
   const [session, setSession] = useState({ ok: 0, total: 0 });
+  const [hintUsed, setHintUsed] = useState(false);
+  const [answerRevealed, setAnswerRevealed] = useState(false);
   const timer = useRef(null);
 
   const dInfo = DIFFICULTIES[diff - 1];
@@ -1898,6 +1900,7 @@ function QuizModal({ onClose, notifyAch }) {
     setProblem(drawProblem(newDiff ?? store.get().quiz.difficulty));
     setPhase("ask"); setPicked(-1); setGain(null);
     setRevealVis(false); setEliminated([]); setDownMsg(false);
+    setHintUsed(false); setAnswerRevealed(false);
   }, []);
 
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -1929,15 +1932,27 @@ function QuizModal({ onClose, notifyAch }) {
   };
 
   const useHint = () => {
-    if (phase !== "ask" || coins < 2) { audio.play("deny"); return; }
+    if (phase !== "ask" || coins < 2 || hintUsed) { audio.play("deny"); return; }
     actions.addCoins(-2);
     audio.play("click");
-    if ((problem.visA || problem.visB) && !revealVis && problem.diff >= 3) { setRevealVis(true); return; }
     // 오답 2개 제거
     const wrongs = problem.choices.map((_, i) => i).filter((i) => i !== problem.answer && !eliminated.includes(i));
     const out = [];
     while (out.length < 2 && wrongs.length) out.push(wrongs.splice(Math.floor(Math.random() * wrongs.length), 1)[0]);
     setEliminated((e) => [...e, ...out]);
+    setHintUsed(true);
+  };
+
+  const showAnswer = () => {
+    if (phase !== "ask") return;
+    setAnswerRevealed(true);
+    setPhase("wrong");
+    store.set((s) => ({
+      player: { ...s.player, combo: 0, solved: s.player.solved + 1 },
+      quiz: { ...s.quiz, correctStreak: 0, wrongStreak: 0 },
+    }));
+    audio.play("wrong");
+    notifyAch();
   };
 
   const acc = session.total ? Math.round((session.ok / session.total) * 100) : null;
@@ -2012,7 +2027,11 @@ function QuizModal({ onClose, notifyAch }) {
         )}
         {phase === "wrong" && (
           <div className="text-center mb-2">
-            <span className="mc-display text-lg" style={{ color: FB.bad }}>아쉬워요! 정답을 확인해 보세요</span>
+            {answerRevealed ? (
+              <span className="mc-display text-lg" style={{ color: FB.bad }}>정답을 확인했어요! (이 문제는 코인 없음 🪙×0)</span>
+            ) : (
+              <span className="mc-display text-lg" style={{ color: FB.bad }}>아쉬워요! 정답을 확인해 보세요</span>
+            )}
             {downMsg && <div className="text-sm mt-1 opacity-80">🍀 조금 쉬운 문제로 바꿔 줄게요. 천천히 해도 괜찮아요!</div>}
           </div>
         )}
@@ -2036,11 +2055,19 @@ function QuizModal({ onClose, notifyAch }) {
 
         {/* 하단 버튼 */}
         <div className="flex items-center justify-between gap-2">
-          <button onClick={useHint} disabled={phase !== "ask" || coins < 2}
-            className="btn-flat rounded-full px-3 py-1.5 text-sm bg-white bg-opacity-75"
-            style={{ opacity: phase === "ask" && coins >= 2 ? 1 : 0.45 }}>
-            💡 힌트 (-2🪙)
-          </button>
+          {!hintUsed ? (
+            <button onClick={useHint} disabled={phase !== "ask" || coins < 2}
+              className="btn-flat rounded-full px-3 py-1.5 text-sm bg-white bg-opacity-75"
+              style={{ opacity: phase === "ask" && coins >= 2 ? 1 : 0.45 }}>
+              💡 힌트 (-2🪙)
+            </button>
+          ) : (
+            <button onClick={showAnswer} disabled={phase !== "ask"}
+              className="btn-flat rounded-full px-3 py-1.5 text-sm"
+              style={{ background: "rgba(242,112,91,0.18)", opacity: phase === "ask" ? 1 : 0.45 }}>
+              📖 정답 보기
+            </button>
+          )}
           <div className="flex gap-2">
             {phase === "wrong" && (
               <button className="btn-chunky rounded-full px-5 py-2 mc-display text-white" style={{ background: "linear-gradient(#FF9B7B,#F2705B)" }}
