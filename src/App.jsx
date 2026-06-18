@@ -502,12 +502,12 @@ const actions = {
   },
 
   // ── 퀴즈 보상 ──
-  answerCorrect() {
+  answerCorrect(noCoins = false) {
     const s = store.get();
     const diff = s.quiz.difficulty;
     const combo = s.player.combo + 1;
     const mult = combo >= 10 ? 2 : combo >= 5 ? 1.5 : combo >= 3 ? 1.2 : 1;
-    const coins = Math.round(DIFFICULTIES[diff - 1].reward * mult);
+    const coins = noCoins ? 0 : Math.round(DIFFICULTIES[diff - 1].reward * mult);
     const xpGain = 10 + diff * 4;
     let { xp, level } = s.player;
     xp += xpGain;
@@ -1910,11 +1910,11 @@ function QuizModal({ onClose, notifyAch }) {
     setPicked(i);
     setSession((s2) => ({ ok: s2.ok + (i === problem.answer ? 1 : 0), total: s2.total + 1 }));
     if (i === problem.answer) {
-      const res = actions.answerCorrect();
+      const res = actions.answerCorrect(answerRevealed);
       setGain(res);
       setPhase("right");
       audio.play("correct");
-      setTimeout(() => audio.play("coin"), 180);
+      if (!answerRevealed) setTimeout(() => audio.play("coin"), 180);
       if (res.leveled) setTimeout(() => audio.play("level"), 420);
       notifyAch();
       if (res.streak >= 3 && diff < 5) {
@@ -1944,15 +1944,9 @@ function QuizModal({ onClose, notifyAch }) {
   };
 
   const showAnswer = () => {
-    if (phase !== "ask") return;
+    if (phase !== "ask" || answerRevealed) return;
     setAnswerRevealed(true);
-    setPhase("wrong");
-    store.set((s) => ({
-      player: { ...s.player, combo: 0, solved: s.player.solved + 1 },
-      quiz: { ...s.quiz, correctStreak: 0, wrongStreak: 0 },
-    }));
-    audio.play("wrong");
-    notifyAch();
+    audio.play("click");
   };
 
   const acc = session.total ? Math.round((session.ok / session.total) * 100) : null;
@@ -2001,6 +1995,8 @@ function QuizModal({ onClose, notifyAch }) {
             if (phase !== "ask") {
               if (isAns) { bg = FB.goodBg; border = `3px solid ${FB.good}`; }
               else if (isPicked) { bg = FB.badBg; border = `3px solid ${FB.bad}`; }
+            } else if (answerRevealed && isAns) {
+              bg = FB.goodBg; border = `3px solid ${FB.good}`;
             }
             return (
               <button key={i} disabled={phase !== "ask" || gone}
@@ -2019,19 +2015,19 @@ function QuizModal({ onClose, notifyAch }) {
         {phase === "right" && gain && (
           <div className="text-center mc-display mb-2 relative">
             <span className="text-lg" style={{ color: FB.good }}>딩동댕~ 정답! 🎉</span>
-            <span className="absolute left-1/2 -translate-x-1/2 text-xl" style={{ animation: "coinfly 1.1s ease-out both", color: "#C28A1E" }}>
-              +{gain.coins}🪙{gain.mult > 1 ? ` (콤보 ×${gain.mult})` : ""}
-            </span>
+            {gain.coins > 0 ? (
+              <span className="absolute left-1/2 -translate-x-1/2 text-xl" style={{ animation: "coinfly 1.1s ease-out both", color: "#C28A1E" }}>
+                +{gain.coins}🪙{gain.mult > 1 ? ` (콤보 ×${gain.mult})` : ""}
+              </span>
+            ) : (
+              <span className="text-sm opacity-70"> (정답 확인 후 +0🪙)</span>
+            )}
             {gain.leveled && <div className="text-sm mt-1" style={{ color: "#8A6FD1" }}>⬆ 레벨 업! Lv.{gain.level} 달성!</div>}
           </div>
         )}
         {phase === "wrong" && (
           <div className="text-center mb-2">
-            {answerRevealed ? (
-              <span className="mc-display text-lg" style={{ color: FB.bad }}>정답을 확인했어요! (이 문제는 코인 없음 🪙×0)</span>
-            ) : (
-              <span className="mc-display text-lg" style={{ color: FB.bad }}>아쉬워요! 정답을 확인해 보세요</span>
-            )}
+            <span className="mc-display text-lg" style={{ color: FB.bad }}>아쉬워요! 정답을 확인해 보세요</span>
             {downMsg && <div className="text-sm mt-1 opacity-80">🍀 조금 쉬운 문제로 바꿔 줄게요. 천천히 해도 괜찮아요!</div>}
           </div>
         )}
@@ -2062,9 +2058,9 @@ function QuizModal({ onClose, notifyAch }) {
               💡 힌트 (-2🪙)
             </button>
           ) : (
-            <button onClick={showAnswer} disabled={phase !== "ask"}
+            <button onClick={showAnswer} disabled={phase !== "ask" || answerRevealed}
               className="btn-flat rounded-full px-3 py-1.5 text-sm"
-              style={{ background: "rgba(242,112,91,0.18)", opacity: phase === "ask" ? 1 : 0.45 }}>
+              style={{ background: "rgba(242,112,91,0.18)", opacity: phase === "ask" && !answerRevealed ? 1 : 0.45 }}>
               📖 정답 보기
             </button>
           )}
